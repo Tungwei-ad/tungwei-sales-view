@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>銷控表（唯讀檢視）</title>
+<style>
+  :root{
+    --navy:#0f2747;
+    --navy-light:#1e3a5f;
+    --gray-border:#94a3b8;
+    --gray-bg:#f1f5f9;
+    --gray-mid:#cbd5e1;
+    --amber:#b45309;
+    --amber-bg:#fef3c7;
+    --text-dark:#1e293b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Microsoft JhengHei","微軟正黑體","PingFang TC","Heiti TC",sans-serif;
+    background:var(--gray-bg);
+    color:var(--text-dark);
+  }
+  header.topbar{
+    background:linear-gradient(90deg,var(--navy),var(--navy-light));
+    color:#fff;
+    padding:16px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  header.topbar h1{ margin:0; font-size:1.25rem; letter-spacing:1px; }
+  header.topbar .updated{ font-size:0.82rem; opacity:0.85; }
+  .container{ max-width:1400px; margin:0 auto; padding:16px; }
+  .card{
+    background:#fff;
+    border:1px solid var(--gray-mid);
+    border-radius:8px;
+    padding:16px 20px;
+    margin-bottom:16px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card h2{
+    margin:0 0 12px 0;
+    font-size:1rem;
+    color:var(--navy);
+    border-left:4px solid var(--navy);
+    padding-left:8px;
+  }
+  .dashboard-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:12px;
+    margin-bottom:12px;
+  }
+  .stat-card{ border-radius:8px; padding:14px 16px; color:#fff; }
+  .stat-card .label{ font-size:0.82rem; opacity:0.9; }
+  .stat-card .value{ font-size:1.7rem; font-weight:bold; margin-top:4px; }
+  .stat-total{ background:linear-gradient(135deg,#1e3a8a,#172554); }
+  .stat-sold{ background:linear-gradient(135deg,#1d4ed8,#1e3a8a); }
+  .stat-sold-pct{ background:linear-gradient(135deg,#2563eb,#1d4ed8); }
+  .stat-available{ background:linear-gradient(135deg,#3b82f6,#2563eb); }
+  .stat-reserved{ background:linear-gradient(135deg,#60a5fa,#3b82f6); }
+  .stat-size-total{ background:linear-gradient(135deg,#115e59,#134e4a); }
+  .stat-size-sold{ background:linear-gradient(135deg,#0d9488,#0f766e); }
+  .stat-amount{ background:linear-gradient(135deg,#be123c,#9f1239); }
+  .stat-premium{ background:linear-gradient(135deg,#f43f5e,#e11d48); }
+  .stat-parking-total{ background:linear-gradient(135deg,#5b21b6,#4c1d95); }
+  .stat-parking-sold{ background:linear-gradient(135deg,#6d28d9,#5b21b6); }
+  .stat-parking-remain{ background:linear-gradient(135deg,#7c3aed,#6d28d9); }
+  .legend{ font-size:0.82rem; color:#475569; margin-bottom:10px; display:flex; gap:16px; flex-wrap:wrap; }
+  .legend span.swatch{
+    display:inline-block; width:16px; height:16px; border:1px solid var(--gray-border);
+    border-radius:3px; vertical-align:middle; margin-right:5px; text-align:center; line-height:16px; font-size:11px;
+  }
+  .swatch.available{ background:#fff; }
+  .swatch.sold{ background:#fff; color:#111827; font-weight:bold; }
+  .swatch.reserved{ background:var(--amber-bg); color:var(--amber); }
+  .swatch.void{ background:repeating-linear-gradient(45deg,#475569,#475569 4px,#94a3b8 4px,#94a3b8 8px); }
+  .table-scroll{ overflow-x:auto; overflow-y:auto; max-height:70vh; border:1px solid var(--gray-border); border-radius:8px; }
+  table.salesgrid{ border-collapse:collapse; min-width:100%; table-layout:fixed; }
+  table.salesgrid th, table.salesgrid td{ border:1px solid var(--gray-border); text-align:center; white-space:nowrap; }
+  table.salesgrid thead th{ background:var(--navy); color:#fff; padding:8px 6px; font-size:0.85rem; position:sticky; z-index:3; }
+  table.salesgrid thead tr:nth-child(1) th{ top:0; }
+  table.salesgrid thead tr:nth-child(2) th{ top:34px; }
+  table.salesgrid thead th.corner{ background:var(--navy-light); left:0; z-index:4; width:44px; min-width:44px; }
+  table.salesgrid tbody th.floor-cell{ background:var(--navy-light); color:#fff; position:sticky; left:0; z-index:2; padding:6px 2px; font-size:0.82rem; width:44px; min-width:44px; }
+  table.salesgrid td.unit-cell{ position:relative; width:70px; min-width:70px; height:42px; min-height:42px; background:#fff; font-size:1.1rem; }
+  td.unit-cell .cell-label{ display:block; font-size:0.66rem; color:#94a3b8; }
+  td.unit-cell.status-sold{ background:#fff; }
+  td.unit-cell.status-sold .cell-symbol{ color:#111827; font-size:1.5rem; font-weight:bold; }
+  td.unit-cell.status-reserved{ background:var(--amber-bg); color:#b45309; }
+  table.salesgrid td.unit-cell.status-void{ background:repeating-linear-gradient(45deg,#475569,#475569 6px,#94a3b8 6px,#94a3b8 12px); color:#f1f5f9; }
+  tbody tr:nth-child(odd) td.unit-cell.status-available{ background:#f8fafc; }
+  table.summarytable{ border-collapse:collapse; min-width:100%; font-size:0.82rem; }
+  table.summarytable th, table.summarytable td{ border:1px solid var(--gray-mid); padding:6px 8px; text-align:center; white-space:nowrap; }
+  table.summarytable thead th{ background:var(--navy); color:#fff; position:sticky; top:0; }
+  table.summarytable td.cell-sold-text{ color:#111827; font-weight:bold; }
+  table.summarytable td.cell-reserved-text{ color:#b45309; font-weight:bold; }
+  table.summarytable td.cell-void-text{ color:#94a3b8; }
+  table.summarytable td.cell-price-alert{ color:#dc2626; font-weight:bold; }
+  .empty-state{ text-align:center; padding:60px 20px; color:#64748b; }
+  footer.foot{ text-align:center; color:#94a3b8; font-size:0.78rem; padding:20px; }
+  @media (prefers-color-scheme: dark){
+    body{ background:#0b1220; color:#e2e8f0; }
+    .card{ background:#111a2c; border-color:#1e293b; }
+    table.salesgrid td.unit-cell{ background:#0f172a; }
+    tbody tr:nth-child(odd) td.unit-cell.status-available{ background:#111a2c; }
+    table.salesgrid td.unit-cell.status-sold{ background:#0f172a; }
+    table.salesgrid td.unit-cell.status-sold .cell-symbol{ color:#e2e8f0; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1 id="pageTitle">銷控表（唯讀檢視）</h1>
+  <div class="updated" id="updatedAt"></div>
+</header>
+<div class="container" id="app"><div class="card"><div class="empty-state">載入中…</div></div></div>
+<footer class="foot">此頁為唯讀檢視，資料由管理端發布同步</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var SUPABASE_URL = "https://cykdmfewgoacaynxhbfy.supabase.co";
+  var PUBLISHABLE_KEY = "sb_publishable_fJYq2vsSrEMEPB7uamEVMA_MIf2EnQh";
+  var REST_URL = SUPABASE_URL + "/rest/v1/sales_control?id=eq.default&select=project_config,sales_data,parking_data,updated_at";
+
+  var app = document.getElementById("app");
+
+  fetch(REST_URL, {
+    headers: {
+      "apikey": PUBLISHABLE_KEY,
+      "Authorization": "Bearer " + PUBLISHABLE_KEY
+    }
+  }).then(function(res){
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }).then(function(rows){
+    render(rows && rows[0] ? rows[0] : null);
+  }).catch(function(err){
+    app.innerHTML = '<div class="card"><div class="empty-state">資料讀取失敗，請稍後重新整理頁面。<br>(' + escapeHtml(err.message || String(err)) + ')</div></div>';
+  });
+
+  function render(row){
+    if (!row || !row.project_config || !row.project_config.buildings || !row.project_config.buildings.length){
+      app.innerHTML = '<div class="card"><div class="empty-state">尚未發布任何銷控資料。<br>請於管理端工具按下「發布到雲端」後再重新整理本頁。</div></div>';
+      return;
+    }
+
+    var projectConfig = row.project_config;
+    var salesData = row.sales_data || {};
+    var parkingData = row.parking_data || null;
+
+    document.getElementById("pageTitle").textContent = (projectConfig.projectName || "銷控表") + "（唯讀檢視）";
+    if (row.updated_at){
+      var d = new Date(row.updated_at);
+      document.getElementById("updatedAt").textContent = "資料更新時間：" + d.toLocaleString("zh-TW");
+    }
+
+    var STATUS = { AVAILABLE:0, SOLD:1, RESERVED:2, VOID:3 };
+
+    function buildKey(b,f,u){ return b + "__F" + f + "__U" + u; }
+
+    function getEntry(key){
+      var e = salesData[key];
+      if (typeof e === "number") e = { status: e };
+      if (!e) e = { status: STATUS.AVAILABLE };
+      if (!e.hasOwnProperty("customer")) e.customer = "";
+      if (!e.hasOwnProperty("basePrice")) e.basePrice = "";
+      if (!e.hasOwnProperty("totalPrice")) e.totalPrice = "";
+      if (!e.hasOwnProperty("size")) e.size = "";
+      if (!e.hasOwnProperty("contractDate")) e.contractDate = "";
+      if (!e.hasOwnProperty("unitPrice")) e.unitPrice = "";
+      if (!e.hasOwnProperty("parkingSlots")) e.parkingSlots = [];
+      if (!e.hasOwnProperty("houseSellPrice")){
+        var legacyTotal = parseFloat(e.totalPrice);
+        e.houseSellPrice = !isNaN(legacyTotal) ? String(legacyTotal) : "";
+      }
+      return e;
+    }
+
+    function premiumValue(houseRaw, baseRaw){
+      var h = parseFloat(houseRaw), b = parseFloat(baseRaw);
+      if (isNaN(h) || isNaN(b)) return "";
+      return h - b;
+    }
+
+    function formatPremiumNum(num){
+      if (num === "" || num === null || typeof num === "undefined" || isNaN(num)) return "";
+      if (num > 0) return "超價 +" + num.toFixed(1) + " 萬";
+      if (num < 0) return "破底 " + num.toFixed(1) + " 萬";
+      return "持平";
+    }
+
+    function formatParkingSlotsText(slots){
+      if (!slots || !slots.length) return "";
+      return slots.map(function(p){
+        var num = p.number && String(p.number).length ? p.number : "未指定";
+        var price = p.price && String(p.price).length ? (p.price + "萬") : "未填寫";
+        return num + ":" + price;
+      }).join("、");
+    }
+
+    function getFloorUnitCount(){ return projectConfig.unitsPerFloor; }
+    function getMaxCols(){ return projectConfig.unitsPerFloor; }
+
+    function getUnitLabel(b,u){
+      var key = b + "__U" + u;
+      return (projectConfig.unitLabels && projectConfig.unitLabels.hasOwnProperty(key)) ? projectConfig.unitLabels[key] : (u + "戶");
+    }
+    function getUnitSize(b,u){
+      var key = b + "__SZ" + u;
+      return (projectConfig.unitSizes && projectConfig.unitSizes.hasOwnProperty(key)) ? projectConfig.unitSizes[key] : "";
+    }
+    function getEffectiveSize(entry,b,slot){
+      if (entry && entry.size !== "" && entry.size !== null && typeof entry.size !== "undefined") return entry.size;
+      return getUnitSize(b, slot);
+    }
+    function getUnitSlot(b,f,u){
+      var key = b + "__F" + f;
+      var map = projectConfig.floorUnitSlots ? projectConfig.floorUnitSlots[key] : null;
+      if (map && map.hasOwnProperty(u)) return map[u];
+      return u;
+    }
+
+    function statusClass(s){
+      if (s === STATUS.SOLD) return "status-sold";
+      if (s === STATUS.RESERVED) return "status-reserved";
+      if (s === STATUS.VOID) return "status-void";
+      return "status-available";
+    }
+    function statusSymbol(s){
+      if (s === STATUS.SOLD) return "●";
+      if (s === STATUS.RESERVED) return "▲";
+      return "";
+    }
+    function statusText(s){
+      if (s === STATUS.SOLD) return "已售";
+      if (s === STATUS.RESERVED) return "保留";
+      if (s === STATUS.VOID) return "對角線";
+      return "可售";
+    }
+
+    function summaryRowsData(){
+      var buildings = projectConfig.buildings;
+      var totalFloors = projectConfig.totalFloors;
+      var rows = [];
+      buildings.forEach(function(b){
+        var maxCols = getMaxCols();
+        for (var f = totalFloors; f >= 1; f--){
+          var effectiveCount = getFloorUnitCount();
+          var slotToUnit = {};
+          for (var u=1; u<=effectiveCount; u++){
+            var slot = getUnitSlot(b,f,u);
+            if (slot < 1 || slot > maxCols) slot = u;
+            slotToUnit[slot] = u;
+          }
+          for (var col=1; col<=maxCols; col++){
+            if (!slotToUnit.hasOwnProperty(col)) continue;
+            var unitIdx = slotToUnit[col];
+            var key = buildKey(b,f,unitIdx);
+            var entry = getEntry(key);
+            rows.push({
+              building: b, floor: f, label: getUnitLabel(b,col), size: getEffectiveSize(entry,b,col),
+              status: entry.status, customer: entry.customer || "", contractDate: entry.contractDate || "",
+              unitPrice: entry.unitPrice || "", basePrice: entry.basePrice || "", houseSellPrice: entry.houseSellPrice || "",
+              premium: premiumValue(entry.houseSellPrice, entry.basePrice), parkingInfo: formatParkingSlotsText(entry.parkingSlots),
+              totalPrice: entry.totalPrice || ""
+            });
+          }
+        }
+      });
+      return rows;
+    }
+
+    function buildDashboard(){
+      var buildings = projectConfig.buildings;
+      var totalFloors = projectConfig.totalFloors;
+      var total=0, sold=0, reserved=0, soldAmount=0, totalSize=0, soldSize=0, totalPremium=0;
+      buildings.forEach(function(b){
+        var maxCols = getMaxCols();
+        for (var f=1; f<=totalFloors; f++){
+          var effectiveCount = getFloorUnitCount();
+          for (var u=1; u<=effectiveCount; u++){
+            var key = buildKey(b,f,u);
+            var entry = getEntry(key);
+            if (entry.status === STATUS.VOID) continue;
+            total++;
+            var slot = getUnitSlot(b,f,u);
+            if (slot < 1 || slot > maxCols) slot = u;
+            var sizeNum = parseFloat(getEffectiveSize(entry,b,slot));
+            if (!isNaN(sizeNum)) totalSize += sizeNum;
+            if (entry.status === STATUS.SOLD){
+              sold++;
+              var amt = parseFloat(entry.totalPrice);
+              if (!isNaN(amt)) soldAmount += amt;
+              if (!isNaN(sizeNum)) soldSize += sizeNum;
+              var premiumNum = premiumValue(entry.houseSellPrice, entry.basePrice);
+              if (premiumNum !== "" && !isNaN(premiumNum)) totalPremium += premiumNum;
+            } else if (entry.status === STATUS.RESERVED) reserved++;
+          }
+        }
+      });
+      var available = total - sold;
+      var soldPct = total > 0 ? (sold/total*100) : 0;
+
+      var parkingTotal=0, parkingSold=0;
+      if (parkingData && parkingData.floors){
+        var assignments = {};
+        Object.keys(salesData).forEach(function(k){
+          var e = salesData[k];
+          (e && e.parkingSlots || []).forEach(function(p){
+            if (p && p.number) assignments[String(p.number).trim()] = true;
+          });
+        });
+        Object.keys(parkingData.floors).forEach(function(fn){
+          (parkingData.floors[fn].objects || []).forEach(function(o){
+            if (o.type === "slot" && !o.notForSale){
+              parkingTotal++;
+              if (o.label && assignments.hasOwnProperty(o.label)) parkingSold++;
+            }
+          });
+        });
+      }
+      var parkingRemain = parkingTotal - parkingSold;
+
+      var cards = [
+        ["stat-total","總戶數",total],
+        ["stat-sold","已售戶數",sold],
+        ["stat-sold-pct","銷售率",soldPct.toFixed(1)+"%"],
+        ["stat-available","可售戶數",available],
+        ["stat-reserved","保留戶數",reserved],
+        ["stat-size-total","總坪數",totalSize.toFixed(1)+" 坪"],
+        ["stat-size-sold","已售坪數",soldSize.toFixed(1)+" 坪"],
+        ["stat-amount","已銷售金額(萬)",soldAmount.toFixed(1)],
+        ["stat-premium","超溢價總額(萬)",totalPremium.toFixed(1)]
+      ];
+      if (parkingData && parkingData.floors){
+        cards.push(["stat-parking-total","總車位數",parkingTotal]);
+        cards.push(["stat-parking-sold","已售車位",parkingSold]);
+        cards.push(["stat-parking-remain","剩餘車位",parkingRemain]);
+      }
+
+      var html = '<div class="dashboard-row">';
+      cards.forEach(function(c){
+        html += '<div class="stat-card ' + c[0] + '"><div class="label">' + c[1] + '</div><div class="value">' + c[2] + '</div></div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function buildGrid(){
+      var buildings = projectConfig.buildings;
+      var totalFloors = projectConfig.totalFloors;
+      var buildingCols = {};
+      buildings.forEach(function(b){ buildingCols[b] = getMaxCols(); });
+
+      var html = '<div class="table-scroll"><table class="salesgrid"><thead>';
+      html += '<tr><th class="corner" rowspan="2">樓層</th>';
+      buildings.forEach(function(b){ html += '<th colspan="' + buildingCols[b] + '">' + escapeHtml(b) + '</th>'; });
+      html += '</tr><tr>';
+      buildings.forEach(function(b){
+        for (var u=1; u<=buildingCols[b]; u++){
+          html += '<th>' + escapeHtml(getUnitLabel(b,u)) + (getUnitSize(b,u) ? ('<br><span style="font-weight:normal;font-size:0.7rem;">' + escapeHtml(getUnitSize(b,u)) + '坪</span>') : '') + '</th>';
+        }
+      });
+      html += '</tr></thead><tbody>';
+
+      for (var f = totalFloors; f >= 1; f--){
+        html += '<tr><th class="floor-cell">' + f + 'F</th>';
+        buildings.forEach(function(b){
+          var effectiveCount = getFloorUnitCount();
+          var maxCols = buildingCols[b];
+          var slotToUnit = {};
+          for (var u=1; u<=effectiveCount; u++){
+            var slot = getUnitSlot(b,f,u);
+            if (slot < 1 || slot > maxCols) slot = u;
+            slotToUnit[slot] = u;
+          }
+          for (var col=1; col<=maxCols; col++){
+            if (!slotToUnit.hasOwnProperty(col)){
+              html += '<td class="unit-cell status-void"></td>';
+              continue;
+            }
+            var unitIdx = slotToUnit[col];
+            var key = buildKey(b,f,unitIdx);
+            var entry = getEntry(key);
+            html += '<td class="unit-cell ' + statusClass(entry.status) + '"><span class="cell-symbol">' + statusSymbol(entry.status) + '</span></td>';
+          }
+        });
+        html += '</tr>';
+      }
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    function buildSummaryTable(){
+      var headers = ["棟別","樓層","戶別","坪數","狀態","客戶","簽約時間","單坪售價(萬/坪)","房屋底價(萬)","房屋銷售價(萬)","超溢價(萬)","車位資訊","銷售總價(萬)"];
+      var rows = summaryRowsData();
+      var html = '<div class="table-scroll"><table class="summarytable"><thead><tr>';
+      headers.forEach(function(h){ html += '<th>' + h + '</th>'; });
+      html += '</tr></thead><tbody>';
+      rows.forEach(function(r){
+        function cell(text, cls){
+          var t = (text === "" || text === null || typeof text === "undefined") ? "—" : text;
+          return '<td' + (cls ? (' class="' + cls + '"') : '') + '>' + escapeHtml(t) + '</td>';
+        }
+        html += '<tr>';
+        html += cell(r.building);
+        html += cell(r.floor + "F");
+        html += cell(r.label);
+        html += cell(r.size);
+        var statusCls = r.status === STATUS.SOLD ? "cell-sold-text" : r.status === STATUS.RESERVED ? "cell-reserved-text" : r.status === STATUS.VOID ? "cell-void-text" : "";
+        html += cell(statusText(r.status), statusCls);
+        if (r.status === STATUS.VOID){
+          html += cell("")+cell("")+cell("")+cell("")+cell("")+cell("")+cell("")+cell("");
+        } else {
+          var houseNum = parseFloat(r.houseSellPrice), baseNum = parseFloat(r.basePrice);
+          var priceAlert = (r.status === STATUS.SOLD && !isNaN(houseNum) && !isNaN(baseNum) && houseNum < baseNum);
+          html += cell(r.customer);
+          html += cell(r.contractDate);
+          html += cell(r.unitPrice);
+          html += cell(r.basePrice);
+          html += cell(r.houseSellPrice, priceAlert ? "cell-price-alert" : "");
+          html += cell(formatPremiumNum(r.premium), (r.premium !== "" && r.premium < 0) ? "cell-price-alert" : "");
+          html += cell(r.parkingInfo);
+          html += cell(r.totalPrice);
+        }
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    var out = '';
+    out += '<div class="card">' + buildDashboard() + '</div>';
+    out += '<div class="card"><h2>銷控圖</h2>';
+    out += '<div class="legend"><span><span class="swatch available"></span>可售</span><span><span class="swatch reserved">▲</span>保留</span><span><span class="swatch sold">●</span>已售</span><span><span class="swatch void"></span>非銷售戶</span></div>';
+    out += buildGrid() + '</div>';
+    out += '<div class="card"><h2>銷控明細表</h2>' + buildSummaryTable() + '</div>';
+    app.innerHTML = out;
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, function(ch){
+      return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" })[ch];
+    });
+  }
+})();
+</script>
+</body>
+</html>
