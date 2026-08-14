@@ -112,13 +112,16 @@
   .parking-object rect.slot-rect{ fill:#dbeafe; stroke:#2563eb; stroke-width:1.5; }
   .parking-object rect.obstacle-rect{ fill:#fde68a; stroke:#b45309; stroke-width:1.5; }
   .parking-object text{ font-size:11px; fill:#1e293b; text-anchor:middle; dominant-baseline:middle; }
-  .parking-object.assigned rect.slot-rect{ fill:#86efac; stroke:#16a34a; }
+  .parking-object.assigned-sold rect.slot-rect{ fill:#86efac; stroke:#16a34a; }
   .parking-object.not-for-sale rect.slot-rect{ fill:#e2e8f0; stroke:#64748b; stroke-dasharray:4,2; }
   .parking-object.not-for-sale text{ fill:#64748b; }
+  .parking-object text.reserved-marker{ display:none; text-anchor:end; dominant-baseline:middle; font-size:13px; font-weight:bold; fill:#b45309; }
+  .parking-object.assigned-reserved text.reserved-marker{ display:inline; }
   .parking-legend{ font-size:0.82rem; color:#475569; margin-bottom:14px; display:flex; gap:16px; flex-wrap:wrap; }
   .parking-legend .swatch{ display:inline-block; width:16px; height:16px; border-radius:3px; vertical-align:middle; margin-right:5px; }
   .parking-legend .swatch.avail{ background:#dbeafe; border:1.5px solid #2563eb; }
   .parking-legend .swatch.sold{ background:#86efac; border:1.5px solid #16a34a; }
+  .parking-legend .swatch.reserved{ background:#dbeafe; border:1.5px solid #2563eb; position:relative; }
   .parking-legend .swatch.nfs{ background:#e2e8f0; border:1.5px dashed #64748b; }
   .parking-legend .swatch.obstacle{ background:#fde68a; border:1.5px solid #b45309; }
   footer.foot{ text-align:center; color:#94a3b8; font-size:0.78rem; padding:20px; }
@@ -333,14 +336,14 @@
         Object.keys(salesData).forEach(function(k){
           var e = salesData[k];
           (e && e.parkingSlots || []).forEach(function(p){
-            if (p && p.number) assignments[String(p.number).trim()] = true;
+            if (p && p.number) assignments[String(p.number).trim()] = { status: e.status };
           });
         });
         Object.keys(parkingData.floors).forEach(function(fn){
           (parkingData.floors[fn].objects || []).forEach(function(o){
             if (o.type === "slot" && !o.notForSale){
               parkingTotal++;
-              if (o.label && assignments.hasOwnProperty(o.label)) parkingSold++;
+              if (o.label && assignments[o.label] && assignments[o.label].status === STATUS.SOLD) parkingSold++;
             }
           });
         });
@@ -464,7 +467,7 @@
       Object.keys(salesData).forEach(function(k){
         var e = salesData[k];
         (e && e.parkingSlots || []).forEach(function(p){
-          if (p && p.number) assignments[String(p.number).trim()] = { key: k, price: p.price };
+          if (p && p.number) assignments[String(p.number).trim()] = { key: k, price: p.price, status: e.status };
         });
       });
 
@@ -489,21 +492,23 @@
 
         (floor.objects || []).forEach(function(o){
           var isSlot = o.type === "slot";
-          var isAssigned = isSlot && o.label && assignments.hasOwnProperty(o.label);
+          var info = (isSlot && o.label) ? assignments[o.label] : null;
+          var isSold = !!(info && info.status === STATUS.SOLD);
+          var isReserved = !!(info && info.status === STATUS.RESERVED);
           var cls = "parking-object " + (isSlot ? "slot-obj" : "obstacle-obj");
           if (isSlot && o.notForSale) cls += " not-for-sale";
-          else if (isAssigned) cls += " assigned";
+          else if (isSold) cls += " assigned-sold";
+          else if (isReserved) cls += " assigned-reserved";
 
           var titleText = "";
           if (isSlot){
             if (o.notForSale){
               titleText = (o.label || "") + "：不銷售";
-            } else if (isAssigned){
-              var info = assignments[o.label];
+            } else if (info){
               var e2 = salesData[info.key];
               var custName = (e2 && e2.customer && e2.customer.length) ? e2.customer : "客戶未填寫";
               var priceText = (info.price && String(info.price).length) ? (info.price + "萬") : "價格未填";
-              titleText = (o.label || "") + "：已售（" + custName + "，" + priceText + "）";
+              titleText = (o.label || "") + "：" + (isSold ? "已售" : "保留") + "（" + custName + "，" + priceText + "）";
             } else {
               titleText = (o.label || "") + "：可售";
             }
@@ -512,6 +517,9 @@
           html += '<g class="' + cls + '" transform="translate(' + o.x + ',' + o.y + ') rotate(' + o.angle + ')">';
           html += '<rect class="' + (isSlot ? "slot-rect" : "obstacle-rect") + '" x="' + (-o.w/2) + '" y="' + (-o.h/2) + '" width="' + o.w + '" height="' + o.h + '"></rect>';
           html += '<text x="0" y="0">' + escapeHtml((o.label || "") + (isSlot && o.notForSale ? "(停售)" : "")) + '</text>';
+          if (isSlot){
+            html += '<text class="reserved-marker" text-anchor="end" x="' + (o.w/2 - 3) + '" y="' + (-o.h/2 + 9) + '">▲</text>';
+          }
           if (titleText) html += '<title>' + escapeHtml(titleText) + '</title>';
           html += '</g>';
         });
@@ -529,7 +537,7 @@
     out += '<div class="card"><h2>銷控明細表</h2>' + buildSummaryTable() + '</div>';
     if (parkingData && parkingData.floors && Object.keys(parkingData.floors).length){
       out += '<div class="card"><h2>停車位銷控圖</h2>';
-      out += '<div class="parking-legend"><span><span class="swatch avail"></span>可售</span><span><span class="swatch sold"></span>已售</span><span><span class="swatch nfs"></span>不銷售</span><span><span class="swatch obstacle"></span>障礙物/公設</span></div>';
+      out += '<div class="parking-legend"><span><span class="swatch avail"></span>可售</span><span><span class="swatch sold"></span>已售</span><span><span class="swatch reserved"></span>保留（顯示▲標示）</span><span><span class="swatch nfs"></span>不銷售</span><span><span class="swatch obstacle"></span>障礙物/公設</span></div>';
       out += buildParkingSection() + '</div>';
     }
     app.innerHTML = out;
