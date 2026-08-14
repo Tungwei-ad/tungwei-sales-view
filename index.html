@@ -103,6 +103,24 @@
   table.summarytable td.cell-void-text{ color:#94a3b8; }
   table.summarytable td.cell-price-alert{ color:#dc2626; font-weight:bold; }
   .empty-state{ text-align:center; padding:60px 20px; color:#64748b; }
+  .parking-floor-block{ margin-bottom:22px; }
+  .parking-floor-block h3{ margin:0 0 8px 0; font-size:0.9rem; color:var(--navy); }
+  .parking-canvas-wrap{ overflow-x:auto; border:1px solid var(--gray-border); border-radius:8px; background:#eef2f7; }
+  .parking-svg{ display:block; width:100%; height:auto; min-width:600px; }
+  rect.lot-frame{ fill:#eef2f7; stroke:var(--navy); stroke-width:2; }
+  .parking-bg-image{ pointer-events:none; }
+  .parking-object rect.slot-rect{ fill:#dbeafe; stroke:#2563eb; stroke-width:1.5; }
+  .parking-object rect.obstacle-rect{ fill:#fde68a; stroke:#b45309; stroke-width:1.5; }
+  .parking-object text{ font-size:11px; fill:#1e293b; text-anchor:middle; dominant-baseline:middle; }
+  .parking-object.assigned rect.slot-rect{ fill:#86efac; stroke:#16a34a; }
+  .parking-object.not-for-sale rect.slot-rect{ fill:#e2e8f0; stroke:#64748b; stroke-dasharray:4,2; }
+  .parking-object.not-for-sale text{ fill:#64748b; }
+  .parking-legend{ font-size:0.82rem; color:#475569; margin-bottom:14px; display:flex; gap:16px; flex-wrap:wrap; }
+  .parking-legend .swatch{ display:inline-block; width:16px; height:16px; border-radius:3px; vertical-align:middle; margin-right:5px; }
+  .parking-legend .swatch.avail{ background:#dbeafe; border:1.5px solid #2563eb; }
+  .parking-legend .swatch.sold{ background:#86efac; border:1.5px solid #16a34a; }
+  .parking-legend .swatch.nfs{ background:#e2e8f0; border:1.5px dashed #64748b; }
+  .parking-legend .swatch.obstacle{ background:#fde68a; border:1.5px solid #b45309; }
   footer.foot{ text-align:center; color:#94a3b8; font-size:0.78rem; padding:20px; }
   @media (prefers-color-scheme: dark){
     body{ background:#0b1220; color:#e2e8f0; }
@@ -437,12 +455,83 @@
       return html;
     }
 
+    var FLOOR_CN_NUM = ["", "一","二","三","四","五","六","七","八","九","十"];
+
+    function buildParkingSection(){
+      if (!parkingData || !parkingData.floors || !Object.keys(parkingData.floors).length) return '';
+
+      var assignments = {};
+      Object.keys(salesData).forEach(function(k){
+        var e = salesData[k];
+        (e && e.parkingSlots || []).forEach(function(p){
+          if (p && p.number) assignments[String(p.number).trim()] = { key: k, price: p.price };
+        });
+      });
+
+      var FRAME_W = 900, FRAME_H = 550;
+      var n = parkingData.basementFloors || 0;
+      var html = '';
+      for (var i = 1; i <= n; i++){
+        var name = "B" + i;
+        var floor = parkingData.floors[name];
+        if (!floor) continue;
+        var floorH = floor.frameH || FRAME_H;
+
+        html += '<div class="parking-floor-block">';
+        html += '<h3>地下' + (FLOOR_CN_NUM[i] || i) + '層（' + name + '）</h3>';
+        html += '<div class="parking-canvas-wrap"><svg class="parking-svg" viewBox="0 0 ' + FRAME_W + ' ' + floorH + '">';
+        html += '<rect class="lot-frame" x="2" y="2" width="' + (FRAME_W - 4) + '" height="' + (floorH - 4) + '"></rect>';
+
+        if (floor.bg && floor.bg.src && floor.bg.visible){
+          var opacity = (typeof floor.bg.opacity === "number") ? floor.bg.opacity : 0.5;
+          html += '<image class="parking-bg-image" x="2" y="2" width="' + (FRAME_W - 4) + '" height="' + (floorH - 4) + '" preserveAspectRatio="xMidYMid meet" href="' + floor.bg.src + '" style="opacity:' + opacity + '"></image>';
+        }
+
+        (floor.objects || []).forEach(function(o){
+          var isSlot = o.type === "slot";
+          var isAssigned = isSlot && o.label && assignments.hasOwnProperty(o.label);
+          var cls = "parking-object " + (isSlot ? "slot-obj" : "obstacle-obj");
+          if (isSlot && o.notForSale) cls += " not-for-sale";
+          else if (isAssigned) cls += " assigned";
+
+          var titleText = "";
+          if (isSlot){
+            if (o.notForSale){
+              titleText = (o.label || "") + "：不銷售";
+            } else if (isAssigned){
+              var info = assignments[o.label];
+              var e2 = salesData[info.key];
+              var custName = (e2 && e2.customer && e2.customer.length) ? e2.customer : "客戶未填寫";
+              var priceText = (info.price && String(info.price).length) ? (info.price + "萬") : "價格未填";
+              titleText = (o.label || "") + "：已售（" + custName + "，" + priceText + "）";
+            } else {
+              titleText = (o.label || "") + "：可售";
+            }
+          }
+
+          html += '<g class="' + cls + '" transform="translate(' + o.x + ',' + o.y + ') rotate(' + o.angle + ')">';
+          html += '<rect class="' + (isSlot ? "slot-rect" : "obstacle-rect") + '" x="' + (-o.w/2) + '" y="' + (-o.h/2) + '" width="' + o.w + '" height="' + o.h + '"></rect>';
+          html += '<text x="0" y="0">' + escapeHtml((o.label || "") + (isSlot && o.notForSale ? "(停售)" : "")) + '</text>';
+          if (titleText) html += '<title>' + escapeHtml(titleText) + '</title>';
+          html += '</g>';
+        });
+
+        html += '</svg></div></div>';
+      }
+      return html;
+    }
+
     var out = '';
     out += '<div class="card">' + buildDashboard() + '</div>';
     out += '<div class="card"><h2>銷控圖</h2>';
     out += '<div class="legend"><span><span class="swatch available"></span>可售</span><span><span class="swatch reserved">▲</span>保留</span><span><span class="swatch sold">●</span>已售</span><span><span class="swatch void"></span>非銷售戶</span></div>';
     out += buildGrid() + '</div>';
     out += '<div class="card"><h2>銷控明細表</h2>' + buildSummaryTable() + '</div>';
+    if (parkingData && parkingData.floors && Object.keys(parkingData.floors).length){
+      out += '<div class="card"><h2>停車位銷控圖</h2>';
+      out += '<div class="parking-legend"><span><span class="swatch avail"></span>可售</span><span><span class="swatch sold"></span>已售</span><span><span class="swatch nfs"></span>不銷售</span><span><span class="swatch obstacle"></span>障礙物/公設</span></div>';
+      out += buildParkingSection() + '</div>';
+    }
     app.innerHTML = out;
   }
 
